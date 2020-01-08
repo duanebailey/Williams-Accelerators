@@ -1,0 +1,42 @@
+This is a very simple RISCV RoCC accelerator.  Its purpose it to write 42
+to the destination register.
+
+Clone this repository into the "generators" directory of your chipyard project.
+  git clone https://github.com/duanebailey/fortyTwo ./generators/fortyTwo
+
+Add "fortyTwo" to the dependencies in the top level build.sbt in chipyard wherever
+you find "sha3":
+
+  // fortyTwo project addition:
+  lazy val fortyTwo = (project in file("generators/fortyTwo"))
+  .dependsOn(rocketchip, chisel_testers)
+  .settings(commonSettings)
+
+  lazy val example = conditionalDependsOn(project in file("generators/example"))
+  .dependsOn(boom, hwacha, sifive_blocks, sifive_cache, utilities, fortyTwo, sha3) // <= mod
+  .settings(commonSettings)
+
+
+Add a new "FortyTwoRocketConfig" configuration in the example generator's RocketConfigs.scala
+file.  You can find the format of this configuration in the fortyTwo.scala file in a comment
+near the bottom:
+  class FortyTwoRocketConfig extends Config(
+    new WithTop ++
+    new WithBootROM ++
+    new freechips.rocketchip.subsystem.WithInclusiveCache ++
+    new fortyTwo.WithFortyTwo ++
+    new freechips.rocketchip.subsystem.WithNBigCores(1) ++
+    new freechips.rocketchip.system.BaseConfig)
+
+In the test directory, find fortyTwo.c, which can be build with a minimal RTL by typing
+  make fortyTwo.riscv
+(Safely ignore unused value warnings.)
+
+To build the verilator simulator:
+  cd chipyard/sims/verilator
+  make CONFIG=FortyTwoRocketConfig
+
+To run the test binary, capturing output:
+  make CONFIG=FortyTwoRocketConfig run-binary BINARY=../../generators/fortyTwo/tests/fortyTwo.riscv
+It should say, at the end of the ".out" file, PASSED, the result of returning a 0 from the
+fortyTwo.c program.
