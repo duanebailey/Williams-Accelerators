@@ -6,13 +6,14 @@ import freechips.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.rocket.{TLBConfig, HellaCacheReq}
 
+
 class FortyTwo(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
   override lazy val module = new FortyTwoImp(this)
 }
 
 class FortyTwoImp(outer: FortyTwo)(implicit p: Parameters) extends LazyRoCCModuleImp(outer)
-     with HasCoreParameters {
-  val s_idle :: s_resp :: Nil = Enum(Bits(), 4) // 4?
+{
+  val s_idle :: s_resp :: Nil = Enum(Bits(), 2) // 4?
   val state = Reg(init = s_idle)  // start state
   val req_rd = Reg(io.resp.bits.rd) // destination reg number
 
@@ -21,6 +22,7 @@ class FortyTwoImp(outer: FortyTwo)(implicit p: Parameters) extends LazyRoCCModul
 
   // this unit's response to cmd execution
   when (io.cmd.fire()) {
+    req_rd := io.cmd.bits.inst.rd    
     state := s_resp
   }
 
@@ -32,9 +34,25 @@ class FortyTwoImp(outer: FortyTwo)(implicit p: Parameters) extends LazyRoCCModul
   // response packet:
   io.resp.valid := (state === s_resp)
   io.resp.bits.rd := req_rd
-  io.resp.bits.data := 42.U()
+  io.resp.bits.data := 42.U
   io.busy := (state =/= s_idle)
   io.interrupt := Bool(false)
   io.mem.req.valid := Bool(false)
 }
+
+class WithFortyTwo extends Config ((site, here, up) => {
+  case BuildRoCC => Seq((p: Parameters) => {
+     val fortyTwo = LazyModule.apply(new FortyTwo(OpcodeSet.custom0)(p))
+     fortyTwo
+  })
+})
+
+class FortyTwoRocketConfig extends Config(
+  new WithTop ++
+  new WithBootROM ++
+  new freechips.rocketchip.subsystem.WithInclusiveCache ++
+  new fortyTwo.WithFortyTwo ++                                // add "42" rocc accelerator
+  new freechips.rocketchip.subsystem.WithNBigCores(1) ++
+  new freechips.rocketchip.system.BaseConfig
+)
 
