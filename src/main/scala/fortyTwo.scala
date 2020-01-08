@@ -1,11 +1,13 @@
+// Very simple accelerator, based on the Translator accelerator in
+//   rocket-chip/src/main/scala/tile/LazyRoCC.scala
 package fortyTwo
 
+// Not sure how many of these *really* need to be imported
 import Chisel._
 import freechips.rocketchip.tile._
 import freechips.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.rocket.{TLBConfig, HellaCacheReq}
-
 
 class FortyTwo(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
   override lazy val module = new FortyTwoImp(this)
@@ -47,6 +49,8 @@ class WithFortyTwo extends Config ((site, here, up) => {
   })
 })
 
+/**
+ * Add the following to the example RocketConfigs.scala file:
 class FortyTwoRocketConfig extends Config(
   new WithTop ++
   new WithBootROM ++
@@ -55,4 +59,5 @@ class FortyTwoRocketConfig extends Config(
   new freechips.rocketchip.subsystem.WithNBigCores(1) ++
   new freechips.rocketchip.system.BaseConfig
 )
+*/
 

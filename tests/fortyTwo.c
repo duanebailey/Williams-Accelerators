@@ -11,7 +11,5 @@ static inline unsigned long fortyTwo()
 int main(void)
 {
   unsigned long ft = fortyTwo();
-  if (ft != 42)
-    return ft;
-  return 10;
+  return ft-42;
 }
