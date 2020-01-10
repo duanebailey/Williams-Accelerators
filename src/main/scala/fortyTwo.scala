@@ -87,6 +87,9 @@ object CoEx32 {
    }
 }
 
+/**
+ * Trivial RoCC module to move 42 into the destination register.
+ */
 class FortyTwo(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
   override lazy val module = new FortyTwoImp(this)
 }
@@ -127,8 +130,10 @@ class WithFortyTwo extends Config ((site, here, up) => {
   })
 })
 
+
 /**
  * Accelerator for sorting the 8 bytes of a long word.
+ * 
  */
 class WByteSort(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
    override lazy val module = new WByteSortImp(this)
@@ -270,10 +275,205 @@ class WByteSortImp(outer: WByteSort)(implicit p: Parameters)
 
    // when we respond, become idle again
    when (io.resp.fire()) {
-   printf("result=%x in register %d\n",Cat(s53.io.large,s53.io.small,
-                                           s52.io.large,s52.io.small,
-                                           s51.io.large,s51.io.small,
-                                           s50.io.large,s50.io.small),req_rd)
+   // printf("result=%x in register %d\n",Cat(s53.io.large,s53.io.small,
+   //                                         s52.io.large,s52.io.small,
+   //                                         s51.io.large,s51.io.small,
+   //                                         s50.io.large,s50.io.small),req_rd)
+     state := s_ready
+   }
+
+   io.interrupt := Bool(false)     // instructions never interrupt
+   io.mem.req.valid := Bool(false)  // we don't use memory
+}
+
+/**
+ * Strnlen, where n is 8.
+ * Returns the length of the string contained within the (little-endian) long.
+ */
+class WStr8len(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
+   override lazy val module = new WStr8lenImp(this)
+}
+
+class WithWStr8len extends Config ((site, here, up) => {
+  case BuildRoCC => Seq((p: Parameters) => {
+     val s8l = LazyModule.apply(new WStr8len(OpcodeSet.custom0)(p))
+     s8l
+  })
+})
+
+/**
+ * This accelerator computes the length of the string passed to it; result
+ * is between 0 and 8 (if no null byte).  Interprets the long as a little-endian
+ * string.
+ */
+class WStr8lenImp(outer: WStr8len)(implicit p: Parameters)
+   extends LazyRoCCModuleImp(outer)
+{
+   // State is busy precisely while the instruction is executing; else ready.
+   val s_ready :: s_busy :: Nil = Enum(Bits(), 2)
+   val state = Reg(init = s_ready)   // the starting state
+   val req_rd = Reg(io.resp.bits.rd) // the destination register
+   // grab the bytes of the input long word
+   val b0 = Reg(init = 0.U(8.W)) // lower byte
+   val b1 = Reg(init = 0.U(8.W)) // higher byte
+   val b2 = Reg(init = 0.U(8.W))
+   val b3 = Reg(init = 0.U(8.W))
+   val b4 = Reg(init = 0.U(8.W))
+   val b5 = Reg(init = 0.U(8.W))
+   val b6 = Reg(init = 0.U(8.W))
+   val b7 = Reg(init = 0.U(8.W))
+
+   // we're ready for a new command when state is ready.
+   io.cmd.ready := (state === s_ready)
+   // unit is busy when we're not in the ready state
+   io.busy := (state =/= s_ready)
+
+   // when command fires, grab the destination register and source values
+   when (io.cmd.fire()) {
+      req_rd := io.cmd.bits.inst.rd    // destination register number
+      b0 := io.cmd.bits.rs1(7,0)  // source low byte
+      b1 := io.cmd.bits.rs1(15,8)// source high byte
+      b2 := io.cmd.bits.rs1(23,16)// source high byte
+      b3 := io.cmd.bits.rs1(31,24)// source high byte
+      b4 := io.cmd.bits.rs1(39,32)// source high byte
+      b5 := io.cmd.bits.rs1(47,40)// source high byte
+      b6 := io.cmd.bits.rs1(55,48)// source high byte
+      b7 := io.cmd.bits.rs1(63,56)// source high byte
+      state := s_busy                  // indicate we're busy.
+   }
+   val nul = 0.U(8.W)
+   val end0 = b0 === nul
+   val end1 = (b1 === nul) & ~end0
+   val end2 = (b2 === nul) & ~end1
+   val end3 = (b3 === nul) & ~end2
+   val end4 = (b4 === nul) & ~end3
+   val end5 = (b5 === nul) & ~end4
+   val end6 = (b6 === nul) & ~end5
+   val end7 = (b7 === nul) & ~end6
+   val len = Mux(end0,0.U,Mux(end1,1.U,Mux(end2,2.U,Mux(end3,3.U,Mux(end4,4.U,
+             Mux(end5,5.U,Mux(end6,6.U,Mux(end7,7.U,8.U))))))))
+   
+    // develop response: set reg # and value
+   io.resp.bits.data := len
+   io.resp.bits.rd := req_rd                           // to be written here
+   io.resp.valid := (state === s_busy)                 // we're done
+
+   // when we respond, become idle again
+   when (io.resp.fire()) {
+//     printf("result=%x in register %d\n",len,req_rd)
+     state := s_ready
+   }
+
+   io.interrupt := Bool(false)     // instructions never interrupt
+   io.mem.req.valid := Bool(false)  // we don't use memory
+}
+
+/**
+ * Strncmp, where n is 8.
+ * Compares two strings contained within the (little-endian) longs.
+ */
+class WStr8cmp(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
+   override lazy val module = new WStr8cmpImp(this)
+}
+
+class WithWStr8cmp extends Config ((site, here, up) => {
+  case BuildRoCC => Seq((p: Parameters) => {
+     val s8c = LazyModule.apply(new WStr8cmp(OpcodeSet.custom0)(p))
+     s8c
+  })
+})
+
+/**
+ * This accelerator compares two strings; the result is the difference between
+ * the first differing bytes, or 0.  Interprets the long as a little-endian
+ * string.
+ */
+class WStr8cmpImp(outer: WStr8cmp)(implicit p: Parameters)
+   extends LazyRoCCModuleImp(outer)
+{
+   // State is busy precisely while the instruction is executing; else ready.
+   val s_ready :: s_busy :: Nil = Enum(Bits(), 2)
+   val state = Reg(init = s_ready)   // the starting state
+   val req_rd = Reg(io.resp.bits.rd) // the destination register
+   // grab the bytes of the input long word
+   val a0 = Reg(init = 0.U(8.W)) // lower byte
+   val a1 = Reg(init = 0.U(8.W)) // higher byte
+   val a2 = Reg(init = 0.U(8.W))
+   val a3 = Reg(init = 0.U(8.W))
+   val a4 = Reg(init = 0.U(8.W))
+   val a5 = Reg(init = 0.U(8.W))
+   val a6 = Reg(init = 0.U(8.W))
+   val a7 = Reg(init = 0.U(8.W))
+   val b0 = Reg(init = 0.U(8.W)) // lower byte
+   val b1 = Reg(init = 0.U(8.W)) // higher byte
+   val b2 = Reg(init = 0.U(8.W))
+   val b3 = Reg(init = 0.U(8.W))
+   val b4 = Reg(init = 0.U(8.W))
+   val b5 = Reg(init = 0.U(8.W))
+   val b6 = Reg(init = 0.U(8.W))
+   val b7 = Reg(init = 0.U(8.W))
+
+   // we're ready for a new command when state is ready.
+   io.cmd.ready := (state === s_ready)
+   // unit is busy when we're not in the ready state
+   io.busy := (state =/= s_ready)
+
+   // when command fires, grab the destination register and source values
+   when (io.cmd.fire()) {
+      req_rd := io.cmd.bits.inst.rd    // destination register number
+      a0 := io.cmd.bits.rs1(7,0)  // source low byte
+      a1 := io.cmd.bits.rs1(15,8)// source high byte
+      a2 := io.cmd.bits.rs1(23,16)// source high byte
+      a3 := io.cmd.bits.rs1(31,24)// source high byte
+      a4 := io.cmd.bits.rs1(39,32)// source high byte
+      a5 := io.cmd.bits.rs1(47,40)// source high byte
+      a6 := io.cmd.bits.rs1(55,48)// source high byte
+      a7 := io.cmd.bits.rs1(63,56)// source high byte
+      b0 := io.cmd.bits.rs2(7,0)  // source low byte
+      b1 := io.cmd.bits.rs2(15,8)// source high byte
+      b2 := io.cmd.bits.rs2(23,16)// source high byte
+      b3 := io.cmd.bits.rs2(31,24)// source high byte
+      b4 := io.cmd.bits.rs2(39,32)// source high byte
+      b5 := io.cmd.bits.rs2(47,40)// source high byte
+      b6 := io.cmd.bits.rs2(55,48)// source high byte
+      b7 := io.cmd.bits.rs2(63,56)// source high byte
+      state := s_busy                  // indicate we're busy.
+   }
+   val nul = 0.U(8.W)
+
+   val end0 = a0 === nul
+   val end1 = (a1 === nul) & ~end0
+   val end2 = (a2 === nul) & ~end1
+   val end3 = (a3 === nul) & ~end2
+   val end4 = (a4 === nul) & ~end3
+   val end5 = (a5 === nul) & ~end4
+   val end6 = (a6 === nul) & ~end5
+   val end7 = (a7 === nul) & ~end6
+   val d0 = a0-b0
+   val d1 = a1-b1
+   val d2 = a2-b2
+   val d3 = a3-b3
+   val d4 = a4-b4
+   val d5 = a5-b5
+   val d6 = a6-b6
+   val d7 = a7-b7
+   val diff = Mux(((d0 =/= 0.U) || end0), d0,
+              Mux(((d1 =/= 0.U) || end1), d1,
+              Mux(((d2 =/= 0.U) || end2), d2,
+              Mux(((d3 =/= 0.U) || end3), d3,
+              Mux(((d4 =/= 0.U) || end4), d4,
+              Mux(((d5 =/= 0.U) || end5), d5,
+              Mux(((d6 =/= 0.U) || end6), d6,d7)))))))
+   val sdiff = Cat(Mux(diff(7)===1.U,"hffff_ffff_ffff_ff".U(56.W),0.U(56.W)),diff)
+   
+    // develop response: set reg # and value
+   io.resp.bits.data := sdiff
+   io.resp.bits.rd := req_rd                           // to be written here
+   io.resp.valid := (state === s_busy)                 // we're done
+
+   // when we respond, become idle again
+   when (io.resp.fire()) {
+//     printf("result=%x in register %d\n",len,req_rd)
      state := s_ready
    }
 
