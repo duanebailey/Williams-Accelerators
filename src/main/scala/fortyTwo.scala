@@ -384,9 +384,10 @@ class WithWStr8cmp extends Config ((site, here, up) => {
 })
 
 /**
- * This accelerator compares two strings; the result is the difference between
- * the first differing bytes, or 0.  Interprets the long as a little-endian
- * string.
+ * This accelerator compares two strings; the result is the byte difference
+ * the first differing bytes, or 0.  If the strings are equal and the
+ * end-of-string was not detected, the value is 256.
+ * Interprets the long as a little-endian string.
  */
 class WStr8cmpImp(outer: WStr8cmp)(implicit p: Parameters)
    extends LazyRoCCModuleImp(outer)
@@ -463,17 +464,23 @@ class WStr8cmpImp(outer: WStr8cmp)(implicit p: Parameters)
               Mux(((d3 =/= 0.U) || end3), d3,
               Mux(((d4 =/= 0.U) || end4), d4,
               Mux(((d5 =/= 0.U) || end5), d5,
-              Mux(((d6 =/= 0.U) || end6), d6,d7)))))))
-   val sdiff = Cat(Mux(diff(7)===1.U,"hffff_ffff_ffff_ff".U(56.W),0.U(56.W)),diff)
-   
-    // develop response: set reg # and value
-   io.resp.bits.data := sdiff
+              Mux(((d6 =/= 0.U) || end6), d6,
+              Mux(((d7 =/= 0.U) || end7), d7, 256.U))))))))
+   // the following only useful for sign extending the difference
+   // val sdiff = Cat(Mux(diff(7)===1.U,"hffff_ffff_ffff_ff".U(56.W),0.U(56.W)),diff)
+   // develop response: set reg # and value
+   io.resp.bits.data := diff
    io.resp.bits.rd := req_rd                           // to be written here
    io.resp.valid := (state === s_busy)                 // we're done
 
    // when we respond, become idle again
    when (io.resp.fire()) {
 //     printf("result=%x in register %d\n",len,req_rd)
+     printf("a0=0x%x 1=%x 2=%x 3=%x 4=%x 5=%x 6=%x 7=%x\n",a0,a1,a2,a3,a4,a5,a6,a7)
+     printf("b0=0x%x 1=%x 2=%x 3=%x 4=%x 5=%x 6=%x 7=%x\n",b0,b1,b2,b3,b4,b5,b6,b7)
+     printf("e0=0x%x 1=%x 2=%x 3=%x 4=%x 5=%x 6=%x 7=%x\n",end0,end1,end2,end3,end4,end5,end6,end7)
+     printf("d0=0x%x 1=%x 2=%x 3=%x 4=%x 5=%x 6=%x 7=%x\n",d0,d1,d2,d3,d4,d5,d6,d7)
+     printf("diff=0x%x\n",diff)
      state := s_ready
    }
 
