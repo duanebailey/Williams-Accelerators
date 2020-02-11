@@ -1,5 +1,3 @@
-// Very simple accelerator, based on the Translator accelerator in
-//   rocket-chip/src/main/scala/tile/LazyRoCC.scala
 package fortyTwo
 
 // Not sure how many of these *really* need to be imported
@@ -275,10 +273,6 @@ class WByteSortImp(outer: WByteSort)(implicit p: Parameters)
 
    // when we respond, become idle again
    when (io.resp.fire()) {
-   // printf("result=%x in register %d\n",Cat(s53.io.large,s53.io.small,
-   //                                         s52.io.large,s52.io.small,
-   //                                         s51.io.large,s51.io.small,
-   //                                         s50.io.large,s50.io.small),req_rd)
      state := s_ready
    }
 
@@ -360,13 +354,118 @@ class WStr8lenImp(outer: WStr8len)(implicit p: Parameters)
 
    // when we respond, become idle again
    when (io.resp.fire()) {
-//     printf("result=%x in register %d\n",len,req_rd)
      state := s_ready
    }
 
    io.interrupt := Bool(false)     // instructions never interrupt
    io.mem.req.valid := Bool(false)  // we don't use memory
 }
+
+/**
+ * Strncmp, where n is 8.
+ * Compares two strings contained within the (little-endian) longs.
+ */
+class WFullStr8cmp(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
+   override lazy val module = new WFullStr8cmpImp(this)
+}
+
+class WithWFullStr8cmp extends Config ((site, here, up) => {
+  case BuildRoCC => Seq((p: Parameters) => {
+     val s8c = LazyModule.apply(new WFullStr8cmp(OpcodeSet.custom0)(p))
+     s8c
+  })
+})
+
+/**
+ * This accelerator compares two strings; the result is the byte difference
+ * the first differing bytes, or 0.  This implementation assumes that strings
+ * are resident in virtual memory.  Calls to this instruction may require mapping
+ * and/or locking pages to physical memory.
+ */
+class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
+   extends LazyRoCCModuleImp(outer)
+{
+   // state of the accelerator
+   val s_idle :: s_a_req :: s_a_resp :: s_b_req :: s_b_resp :: s_resp :: Nil = Enum(Bits(), 6)
+   val state = Reg(init = s_idle) // accelerator state
+   val req_rd = Reg(io.resp.bits.rd) // destination register
+   val aPtr = Reg(init = 0.U(64.W))  // pointer to a string
+   val bPtr = Reg(init = 0.U(64.W))  // pointer to b string
+   val aVal = Reg(init = 0.U(64.W))  // character of a
+   val bVal = io.mem.resp.bits.data // where the character of b appears
+   val diff = Reg(init = 0.U(64.W))  // difference between characters
+   val nul = 0.U(64.W)
+
+   // communication with core and (to) memory depend on ready/valid protocol
+   // the accelerator is ready for a new command precisely when it is idle
+   io.cmd.ready := (state === s_idle) // ready/valid for receiving cmd
+   printf("Ping.\n");
+
+   // the meaning of the accelerator 'busy' signal indicates that memory might
+   // be accessed; the following is certainly sufficient
+   io.busy := (state =/= s_idle) // held high as long as memory might be ref'd
+   io.mem.req.valid := false.B //(state === s_a_req) || (state === s_b_req)
+   // absorb command:
+   when (io.cmd.fire()) { // fire happens when io.cmd.ready and io.cmd.valid (set by core)
+     printf("Got strcmp request.\n")
+     aPtr := io.cmd.bits.rs1  // these pointers are passed as the two source arguments
+     bPtr := io.cmd.bits.rs2  // second pointer
+     req_rd := io.cmd.bits.inst.rd  // (RoCCInstruction) register number of desitination
+     io.mem.req.bits.addr := io.cmd.bits.rs1
+     state := s_a_req
+   }
+
+   // request a byte from memory.
+   // io.mem is a HellaCacheIO
+   io.mem.req.bits.cmd := 0.U // M_XRD
+   io.mem.req.bits.size := 0.U // log of number of bytes (here 1 byte -> 0)
+   io.mem.req.bits.signed := false.B // unsigned values
+   io.mem.req.bits.data := Bits(0)  // no outbound data; not writing
+   io.mem.req.bits.phys := false.B // addresses are virtual   
+   io.mem.req.bits.tag := 0.U // reading serially from one port
+
+   when (io.mem.req.fire()) {
+      when (state === s_a_req) {
+         printf("Memory reading A from %x.\n",aPtr)
+         aPtr := aPtr+1.U
+         state := s_a_resp
+      }
+      when (state === s_b_req) {
+         printf("Memory reading B from %x.\n",aPtr)
+         bPtr := bPtr+1.U
+         state := s_b_resp
+      }
+   }
+   // when byte comes back from memory, capture it
+   // values returned from memory do not make use of ready/valid protocol; we must
+   // be willing to accept them whenever they appear valid
+   when (io.mem.resp.valid && state === s_a_resp) {
+     aVal := io.mem.resp.bits.data
+     printf("A value read is %x\n",io.mem.resp.bits.data)
+     io.mem.req.bits.addr := bPtr
+     state := s_b_req
+   }
+   when (io.mem.resp.valid && state === s_b_resp) {
+     val continue = (aVal === bVal) && (aVal =/= nul) && (bVal =/= nul)
+     diff := aVal-bVal
+     printf("B value read is %x\n",io.mem.resp.bits.data)
+     io.mem.req.bits.addr := aPtr
+     state := Mux(continue,s_a_req, s_resp)
+   }
+
+   // when finished, return result
+   io.resp.valid := (state === s_resp)
+   io.resp.bits.rd := req_rd
+   io.resp.bits.data := diff
+
+   // when processor accepts result, become idle
+   when (io.resp.fire()) {
+      printf("result=%x\n",diff);
+      state := s_idle
+   }
+   io.interrupt := false.B
+}
+
 
 /**
  * Strncmp, where n is 8.
@@ -475,12 +574,6 @@ class WStr8cmpImp(outer: WStr8cmp)(implicit p: Parameters)
 
    // when we respond, become idle again
    when (io.resp.fire()) {
-//     printf("result=%x in register %d\n",len,req_rd)
-     printf("a0=0x%x 1=%x 2=%x 3=%x 4=%x 5=%x 6=%x 7=%x\n",a0,a1,a2,a3,a4,a5,a6,a7)
-     printf("b0=0x%x 1=%x 2=%x 3=%x 4=%x 5=%x 6=%x 7=%x\n",b0,b1,b2,b3,b4,b5,b6,b7)
-     printf("e0=0x%x 1=%x 2=%x 3=%x 4=%x 5=%x 6=%x 7=%x\n",end0,end1,end2,end3,end4,end5,end6,end7)
-     printf("d0=0x%x 1=%x 2=%x 3=%x 4=%x 5=%x 6=%x 7=%x\n",d0,d1,d2,d3,d4,d5,d6,d7)
-     printf("diff=0x%x\n",diff)
      state := s_ready
    }
 
@@ -622,12 +715,10 @@ class WCircleImp(outer: WCircle)(implicit p: Parameters)
       y := 0.U
       x := io.cmd.bits.rs1
       e := (~io.cmd.bits.rs1)+1.U
-      printf("Setting r=%d\n",io.cmd.bits.rs1)
       state := s_computing                  // indicate we're busy.
    }
    when (io.cmd.fire() && do_iter) {
       req_rd := io.cmd.bits.inst.rd
-      printf("Attempting return of x=%d\n",Mux(cooked,0.U,x))
       x := Mux(epos,x-1.U,x)
       y := y+1.U
       e := Mux(epos,e3,e2)
