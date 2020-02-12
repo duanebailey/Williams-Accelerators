@@ -386,32 +386,35 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
    extends LazyRoCCModuleImp(outer)
 {
    // state of the accelerator
+   val debugMe = false.B
    val s_idle :: s_a_req :: s_a_resp :: s_b_req :: s_b_resp :: s_resp :: Nil = Enum(Bits(), 6)
    val state = Reg(init = s_idle) // accelerator state
    val req_rd = Reg(io.resp.bits.rd) // destination register
    val aPtr = Reg(init = 0.U(64.W))  // pointer to a string
    val bPtr = Reg(init = 0.U(64.W))  // pointer to b string
    val aVal = Reg(init = 0.U(64.W))  // character of a
-   val bVal = io.mem.resp.bits.data // where the character of b appears
    val diff = Reg(init = 0.U(64.W))  // difference between characters
    val nul = 0.U(64.W)
-
+   val memv = Reg(init = false.B) // is memory request valid?
    // communication with core and (to) memory depend on ready/valid protocol
    // the accelerator is ready for a new command precisely when it is idle
    io.cmd.ready := (state === s_idle) // ready/valid for receiving cmd
-   printf("Ping.\n");
 
    // the meaning of the accelerator 'busy' signal indicates that memory might
    // be accessed; the following is certainly sufficient
    io.busy := (state =/= s_idle) // held high as long as memory might be ref'd
-   io.mem.req.valid := false.B //(state === s_a_req) || (state === s_b_req)
-   // absorb command:
+
+   io.mem.req.valid := memv
+   when (memv) {
+      when (debugMe) { printf("Last memory request is valid.\n") }
+   } 
+
+   // absorb command
    when (io.cmd.fire()) { // fire happens when io.cmd.ready and io.cmd.valid (set by core)
-     printf("Got strcmp request.\n")
+     when (debugMe) { printf("Got strcmp request.\n") }
      aPtr := io.cmd.bits.rs1  // these pointers are passed as the two source arguments
      bPtr := io.cmd.bits.rs2  // second pointer
      req_rd := io.cmd.bits.inst.rd  // (RoCCInstruction) register number of desitination
-     io.mem.req.bits.addr := io.cmd.bits.rs1
      state := s_a_req
    }
 
@@ -424,32 +427,46 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
    io.mem.req.bits.phys := false.B // addresses are virtual   
    io.mem.req.bits.tag := 0.U // reading serially from one port
 
+   when (state === s_a_req) {
+      when (debugMe) { printf("A request valid.\n") }
+      memv := true.B
+      io.mem.req.bits.addr := aPtr
+   }
+   when (state === s_b_req) {
+      when (debugMe) { printf("B request valid.\n") }
+      memv := true.B
+      io.mem.req.bits.addr := bPtr
+   }
    when (io.mem.req.fire()) {
       when (state === s_a_req) {
-         printf("Memory reading A from %x.\n",aPtr)
+         when (debugMe) { printf("Memory reading A from %x.\n",aPtr) }
          aPtr := aPtr+1.U
          state := s_a_resp
       }
       when (state === s_b_req) {
-         printf("Memory reading B from %x.\n",aPtr)
+         when (debugMe) { printf("Memory reading B from %x.\n",bPtr) }
          bPtr := bPtr+1.U
          state := s_b_resp
       }
+      memv := false.B
    }
+
    // when byte comes back from memory, capture it
    // values returned from memory do not make use of ready/valid protocol; we must
    // be willing to accept them whenever they appear valid
    when (io.mem.resp.valid && state === s_a_resp) {
      aVal := io.mem.resp.bits.data
-     printf("A value read is %x\n",io.mem.resp.bits.data)
-     io.mem.req.bits.addr := bPtr
+     when (debugMe) { printf("A value read is %x\n",io.mem.resp.bits.data) }
+     when (debugMe) { printf("A request is not valid.\n") }
      state := s_b_req
    }
+
    when (io.mem.resp.valid && state === s_b_resp) {
+     val bVal = io.mem.resp.bits.data
      val continue = (aVal === bVal) && (aVal =/= nul) && (bVal =/= nul)
      diff := aVal-bVal
-     printf("B value read is %x\n",io.mem.resp.bits.data)
-     io.mem.req.bits.addr := aPtr
+     when (debugMe) { printf("B value read is %x\n",bVal) }
+     when (debugMe) { printf("B request is not valid.\n") }
      state := Mux(continue,s_a_req, s_resp)
    }
 
@@ -460,7 +477,7 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
 
    // when processor accepts result, become idle
    when (io.resp.fire()) {
-      printf("result=%x\n",diff);
+      when (debugMe) { printf("result=%x\n",diff); }
       state := s_idle
    }
    io.interrupt := false.B
