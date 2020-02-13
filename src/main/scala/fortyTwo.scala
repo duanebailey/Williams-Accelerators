@@ -415,6 +415,8 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
      aPtr := io.cmd.bits.rs1  // these pointers are passed as the two source arguments
      bPtr := io.cmd.bits.rs2  // second pointer
      req_rd := io.cmd.bits.inst.rd  // (RoCCInstruction) register number of desitination
+     memv := true.B
+     io.mem.req.bits.addr := aPtr
      state := s_a_req
    }
 
@@ -427,6 +429,8 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
    io.mem.req.bits.phys := false.B // addresses are virtual   
    io.mem.req.bits.tag := 0.U // reading serially from one port
 
+   // when a request is made to the memory sub-system, it must be held high
+   // for two cycles
    when (state === s_a_req) {
       when (debugMe) { printf("A request valid.\n") }
       memv := true.B
@@ -436,6 +440,10 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
       when (debugMe) { printf("B request valid.\n") }
       memv := true.B
       io.mem.req.bits.addr := bPtr
+   }
+   val didFire = RegNext(io.mem.req.fire())
+   when (didFire) {
+      memv := false.B
    }
    when (io.mem.req.fire()) {
       when (state === s_a_req) {
@@ -448,7 +456,7 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
          bPtr := bPtr+1.U
          state := s_b_resp
       }
-      memv := false.B
+//      memv := false.B
    }
 
    // when byte comes back from memory, capture it
