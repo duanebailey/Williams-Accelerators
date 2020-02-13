@@ -395,7 +395,7 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
    val aVal = Reg(init = 0.U(64.W))  // character of a
    val bVal = Reg(init = 0.U(64.W))  // character of b
    val diff = aVal-bVal
-   val nul = 0.U(64.W)
+   val nul = 0.U
    val memv = Reg(init = false.B) // is memory request valid?
    // communication with core and (to) memory depend on ready/valid protocol
    // the accelerator is ready for a new command precisely when it is idle
@@ -418,6 +418,9 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
      req_rd := io.cmd.bits.inst.rd  // (RoCCInstruction) register number of desitination
      memv := true.B
      io.mem.req.bits.addr := aPtr
+     ///
+     io.mem.req.bits.tag := 0.U
+     ///
      state := s_a_req
    }
 
@@ -428,7 +431,6 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
    io.mem.req.bits.signed := false.B // unsigned values
    io.mem.req.bits.data := Bits(0)  // no outbound data; not writing
    io.mem.req.bits.phys := false.B // addresses are virtual   
-   io.mem.req.bits.tag := 0.U // reading serially from one port
 
    // when a request is made to the memory sub-system, it must be held high
    // for two cycles
@@ -436,13 +438,17 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
       when (debugMe) { printf("A request valid.\n") }
       memv := true.B
       io.mem.req.bits.addr := aPtr
+      io.mem.req.bits.tag := 0.U
    }
    when (state === s_b_req) {
       when (debugMe) { printf("B request valid.\n") }
       memv := true.B
       io.mem.req.bits.addr := bPtr
+      io.mem.req.bits.tag := 1.U
    }
-   val didFire = RegNext(io.mem.req.fire())
+
+   // for resetting the request line   
+   val didFire = RegNext(io.mem.req.fire())  // ie. io.mem.req .ready&&.valid
    when (didFire) {
       memv := false.B
    }
@@ -457,7 +463,6 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
          bPtr := bPtr+1.U
          state := s_b_resp
       }
-//      memv := false.B
    }
 
    // when byte comes back from memory, capture it
@@ -467,6 +472,9 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
      aVal := io.mem.resp.bits.data
      when (debugMe) { printf("A value read is %x\n",io.mem.resp.bits.data) }
      when (debugMe) { printf("A request is not valid.\n") }
+     memv := true.B
+     io.mem.req.bits.addr := bPtr
+     io.mem.req.bits.tag := 1.U
      state := s_b_req
    }
 
@@ -476,6 +484,9 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
      bVal := dataRead
      when (debugMe) { printf("B value read is %x\n",bVal) }
      when (debugMe) { printf("B request is not valid.\n") }
+     memv := continue
+     io.mem.req.bits.addr := aPtr
+     io.mem.req.bits.tag := 0.U
      state := Mux(continue,s_a_req, s_resp)
    }
 
@@ -490,6 +501,12 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
       state := s_idle
    }
    io.interrupt := false.B
+
+   // print memory interface information
+   when (io.busy) {
+     printf("State: %d, io.mem.req.valid=%d, .req.ready=%d, .req.tag=%d, .resp.valid=%d, .resp.tag=%d\n",
+          state, io.mem.req.valid, io.mem.req.ready, io.mem.req.bits.tag, io.mem.resp.valid, io.mem.resp.bits.tag)
+   }
 }
 
 
