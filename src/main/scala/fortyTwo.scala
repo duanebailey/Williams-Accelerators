@@ -389,11 +389,12 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
    val debugMe = false.B
    val s_idle :: s_a_req :: s_a_resp :: s_b_req :: s_b_resp :: s_resp :: Nil = Enum(Bits(), 6)
    val state = Reg(init = s_idle) // accelerator state
-   val req_rd = Reg(io.resp.bits.rd) // destination register
+   val req_rd = Reg(io.cmd.bits.inst.rd) // destination register
    val aPtr = Reg(init = 0.U(64.W))  // pointer to a string
    val bPtr = Reg(init = 0.U(64.W))  // pointer to b string
    val aVal = Reg(init = 0.U(64.W))  // character of a
-   val diff = Reg(init = 0.U(64.W))  // difference between characters
+   val bVal = Reg(init = 0.U(64.W))  // character of b
+   val diff = aVal-bVal
    val nul = 0.U(64.W)
    val memv = Reg(init = false.B) // is memory request valid?
    // communication with core and (to) memory depend on ready/valid protocol
@@ -470,9 +471,9 @@ class WFullStr8cmpImp(outer: WFullStr8cmp)(implicit p: Parameters)
    }
 
    when (io.mem.resp.valid && state === s_b_resp) {
-     val bVal = io.mem.resp.bits.data
-     val continue = (aVal === bVal) && (aVal =/= nul) && (bVal =/= nul)
-     diff := aVal-bVal
+     val dataRead = io.mem.resp.bits.data
+     val continue = (aVal === dataRead) && (aVal =/= nul) && (dataRead =/= nul)
+     bVal := dataRead
      when (debugMe) { printf("B value read is %x\n",bVal) }
      when (debugMe) { printf("B request is not valid.\n") }
      state := Mux(continue,s_a_req, s_resp)
