@@ -1,42 +1,57 @@
-This is a very simple RISCV RoCC accelerator.  Its purpose it to write 42
-to the destination register.
+This repository collects a number of simple RISC-V RoCC accelerator cores.
 
 Clone this repository into the "generators" directory of your chipyard project.
-  git clone https://github.com/duanebailey/fortyTwo ./generators/fortyTwo
+  git clone https://github.com/duanebailey/Williams-Accelerators ./generators/williams
 
-Add "fortyTwo" to the dependencies in the top level build.sbt in chipyard wherever
+Add "williams" to the dependencies in the top level build.sbt in chipyard wherever
 you find "sha3":
 
-  // fortyTwo project addition:
-  lazy val fortyTwo = (project in file("generators/fortyTwo"))
+  // williams project addition:
+  lazy val williams = (project in file("generators/williams"))
   .dependsOn(rocketchip, chisel_testers)
   .settings(commonSettings)
 
   lazy val example = conditionalDependsOn(project in file("generators/example"))
-  .dependsOn(boom, hwacha, sifive_blocks, sifive_cache, utilities, fortyTwo, sha3) // <= mod
+  .dependsOn(boom, hwacha, sifive_blocks, sifive_cache, utilities, williams, sha3) // <= mod
   .settings(commonSettings)
 
 
-Add a new "FortyTwoRocketConfig" configuration in the example generator's RocketConfigs.scala
-file.  You can find the format of this configuration in the fortyTwo.scala file in a comment
-near the bottom:
-  class FortyTwoRocketConfig extends Config(
+Add new configurations in the "example" generator's RocketConfigs.scala
+file.  You can find the format of this configuration in the strcmp.scala file
+in a comment near the bottom.  Here, an example that includes the FullStrcmp
+accelerator:
+  class WilliamsRocketConfig extends Config(
     new WithTop ++
     new WithBootROM ++
     new freechips.rocketchip.subsystem.WithInclusiveCache ++
-    new fortyTwo.WithFortyTwo ++
+    new williams.WithFullStrcmp ++
     new freechips.rocketchip.subsystem.WithNBigCores(1) ++
     new freechips.rocketchip.system.BaseConfig)
 
-In the test directory, find fortyTwo.c, which can be build with a minimal RTL by typing
-  make fortyTwo.riscv
+In the test directory, find fullstrcmp.c, which can be built with a minimal
+RTL by typing
+   make fullstrcmp.riscv
 (Safely ignore unused value warnings.)
 
 To build the verilator simulator:
   cd chipyard/sims/verilator
-  make CONFIG=FortyTwoRocketConfig
+  make CONFIG=WilliamsRocketConfig
 
 To run the test binary, capturing output:
-  make CONFIG=FortyTwoRocketConfig run-binary BINARY=../../generators/fortyTwo/tests/fortyTwo.riscv
+  make CONFIG=WilliamsRocketConfig run-binary BINARY=../../generators/williams/tests/fullstrcmp.riscv
 It should say, at the end of the ".out" file, PASSED, the result of returning a 0 from the
-fortyTwo.c program.
+fullstrcmp.c program.
+
+TIMING
+A nice way to perform timing tests is to bracket the testing code with
+   volatile asm("fence");
+codes.  These appear in the cycle-by-cycle output, along with the cycle count
+(leftmost numeric column).  Because of the random start/boot state of the
+standalone machine, it's important to measure the elapsed time between the
+two fence instructions.  For example:
+   grep fence fullstrcmp.example.TestHarnes.WilliamsRocketConfig.out
+might yield the results:
+   C0:      90563 [1] pc=[0000000...
+   C0:      96223 [1] pc=[0000000...
+so the elapsed time is computed as 96223-90563, or 5660.
+

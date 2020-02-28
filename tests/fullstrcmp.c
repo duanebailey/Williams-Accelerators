@@ -1,5 +1,5 @@
 #include "rocc.h"
-#define STRCMP swstrcmp
+#define STRCMP hwstrcmp
 int swstrcmp(const char* s1, const char* s2)
 {
   unsigned char c1, c2;

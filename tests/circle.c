@@ -16,7 +16,10 @@ static inline unsigned long circle_iter()
 int main(void)
 {
 	unsigned long x;
+	int i;
 	circle_init(23);
-        while (circle_iter());
+        for (i = 0; circle_iter() && i < 5; i++);
+	circle_init(10);
+        for (i = 0; circle_iter() && i < 5; i++);
 	return 0;
 }
