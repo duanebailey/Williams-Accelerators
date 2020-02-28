@@ -1,13 +1,20 @@
 #include "rocc.h"
 
-static inline unsigned long str8len(long int input)
+int swStrlen(char *s)
 {
-	unsigned long result;
-	ROCC_INSTRUCTION_DS(0, result, input, 0);
-	return result;
+  char *end = s;
+  while (*end++);
+  return end-s;
 }
 
-int fstrlen(char *s)
+static inline unsigned long str8len(long int input)
+{
+  unsigned long result;
+  ROCC_INSTRUCTION_DS(0, result, input, 0);
+  return result;
+}
+
+int hwStrlen(char *s)
 {
   unsigned long *ls = (unsigned long *)s;
   unsigned long l8;
@@ -26,8 +33,8 @@ int main(void)
   char *hw = "Hello, world!";
   char *now = "Now is the time for all good men to come to the aid of their country.";
   char *now2 = "Now is the time for all good men to come to the aid of their country.";
-  if (fstrlen(h) != strlen(h)) return 1;
-  if (fstrlen(hw) != strlen(hw)) return 1;
-  if (strlen(now2) != strlen(now)) return 1;
+  if (hwStrlen(h) != swStrlen(h)) return 1;
+  if (hwStrlen(hw) != swStrlen(hw)) return 1;
+  if (hwStrlen(now2) != swStrlen(now)) return 1;
   return 0;
 }

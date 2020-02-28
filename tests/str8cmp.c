@@ -1,13 +1,25 @@
 #include "rocc.h"
 
-static inline unsigned long str8cmp(long int input1, long int input2)
+int swStrcmp(char *a, char *b)
 {
-	unsigned long result;
-	ROCC_INSTRUCTION_DSS(0, result, input1, input2, 0);
-	return result;
+  unsigned char c1, c2;
+
+  do {
+    c1 = *a++;
+    c2 = *b++;
+  } while (c1 != 0 && c1 == c2);
+
+  return c1 - c2;
 }
 
-int fstrcmp(char *a, char *b)
+static inline unsigned long str8cmp(long int input1, long int input2)
+{
+  unsigned long result;
+  ROCC_INSTRUCTION_DSS(0, result, input1, input2, 0);
+  return result;
+}
+
+int hwStrcmp(char *a, char *b)
 {
   unsigned long *s = (unsigned long*)a;
   unsigned long *t = (unsigned long*)b;
@@ -29,7 +41,7 @@ int main(void)
 
   char *a = "Now is the time for all good men.";
   char *b = "Now is the time for all good women.";
-  if (fstrcmp(a,b) != ('m'-'w')) return 1;
+  if (hwStrcmp(a,b) != swStrcmp(a,b)) return 1;
   return 0;
 }
 

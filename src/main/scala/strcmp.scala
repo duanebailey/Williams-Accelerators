@@ -130,9 +130,17 @@ class FullStrcmpImp(outer: FullStrcmp)(implicit p: Parameters)
    io.resp.bits.data := diff
    io.resp.valid := state === doneState
    io.interrupt := false.B
-   when (io.busy) {
-     printf("State: %d, io.mem.req.valid=%d, .req.ready=%d, .req.addr=%d, .req.tag=%d, .resp.valid=%d, .resp.tag=%d, .resp.data=%d aPtr=%d aVal=%d bPtr=%d bVal=%d done=%d\n",
-          state, io.mem.req.valid, io.mem.req.ready, io.mem.req.bits.addr, io.mem.req.bits.tag, io.mem.resp.valid, io.mem.resp.bits.tag, io.mem.resp.bits.data, aPtr, aVal, bPtr, bVal, done)
-   }
-   
 }
+
+/**
+ * Add the following to the example generator's RocketConfigs file:
+
+class FullStrcmpRocketConfig extends Config(
+    new WithTop ++
+    new WithBootROM ++
+    new freechips.rocketchip.subsystem.WithInclusiveCache ++
+    new williams.WithFullStrcmp ++
+    new freechips.rocketchip.subsystem.WithNBigCores(1) ++
+    new freechips.rocketchip.system.BaseConfig)
+
+ */
