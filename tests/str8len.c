@@ -1,12 +1,20 @@
+/**
+ * "Stateless" acceleration of string comparision and compare routines.
+ * These hardware accelerators are used to analyze up to 8 bytes at a time.
+ */
 #include "rocc.h"
 
 int swStrlen(char *s)
 {
   char *end = s;
-  while (*end++);
+  while (*end) end++;
   return end-s;
 }
 
+/**
+ * Hardware implementation of string length using stateless acceleration.
+ *  make sure you include both str8len and hwStrlen.
+ */
 static inline unsigned long str8len(long int input)
 {
   unsigned long result;
@@ -17,24 +25,37 @@ static inline unsigned long str8len(long int input)
 int hwStrlen(char *s)
 {
   unsigned long *ls = (unsigned long *)s;
-  unsigned long l8;
-  unsigned long x;
-  while ((x=str8len(*ls)) == 8) ls++;
-  return (((char*)ls)-s)+x;
+  unsigned long offset;
+  while ((offset=str8len(*ls)) == 8) ls++;
+  return (((char*)ls)-s)+offset;
 }
 
 int main(void)
 {
-  if (str8len(0x0807060004030201) != 4) return 1;
-  if (str8len(0x0800060504030201) != 6) return 1;
-  if (str8len(0x0807060054030200) != 0) return 1;
-  if (str8len(0x0807060504030201) != 8) return 1;
+  /* sanity tests for the underlying hardware */
+  for (int i = 0; i < 8; i++) {
+    long int str = 0x0807060504030201; // string
+    long int mask =0x00000000000000ff; // end-of-string location
+    int l = str8len(str & ~(mask << (i<<3)));
+    if (l != i) return i+1;
+  }
   char *h = "hello";
   char *hw = "Hello, world!";
-  char *now = "Now is the time for all good men to come to the aid of their country.";
-  char *now2 = "Now is the time for all good men to come to the aid of their country.";
-  if (hwStrlen(h) != swStrlen(h)) return 1;
-  if (hwStrlen(hw) != swStrlen(hw)) return 1;
-  if (hwStrlen(now2) != swStrlen(now)) return 1;
+  // a long string:
+  char *now = "now is the time for all good men to come to the aid of their country.";
+  // force traversal of a different section of memory
+  char *now2 = "NOW IS THE TIME FOR ALL GOOD MEN TO COME TO THE AID OF THEIR COUNTRY.";
+  if (hwStrlen(h) != swStrlen(h)) return 9;
+  if (hwStrlen(hw) != swStrlen(hw)) return 10;
+  if (hwStrlen(now2) != swStrlen(now)) return 11;
   return 0;
 }
+
+
+
+
+
+
+
+
+

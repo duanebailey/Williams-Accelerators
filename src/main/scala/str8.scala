@@ -4,8 +4,8 @@
  * 8 bytes (64 bits) at a time.  These operations are meant to be used as
  * part of an iteration that scans through the string a longword at a time.
  *
- * Each str8len returns the length of the string found in rs1.  The result is
- * a value 0 through 8, indicating how many of the 8 bytes appear before the
+ * Each str8len returns the length of the string found *within* rs1. The result
+ * is a value 0 through 8, indicating how many of the 8 bytes appear before the
  * end of the string.  If the result is 8, of course, a full implementation of
  * strlen would consider the next longword chunk, until the end-of-string is
  * actually encountered.  Test with str8len.c.
