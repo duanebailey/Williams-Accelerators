@@ -12,16 +12,31 @@
 #define MINOR 4
 int MAJOR = 16/MINOR; 
 
-unsigned long swRoot(long int input)
+unsigned int swRoot(unsigned int n)
 {
-  return input;
+  int m = 0; // the remainder (possibly negative)
+  unsigned int r = 0; // the root
+  unsigned int v; // an intermediate value
+  int i;
+  for (i = 0; i < 16; i++) {
+    v = (m<<2) | (n>>30); // drop down two bits of n
+    n = (n<<2) & 0xffffffff;
+    m = v-((r<<2)+1);
+    if (m < 0) {
+      m = v;
+      r <<= 1;      // 0 bit computed
+    } else {
+      r = (r<<1)+1; // 1 bit computed
+    }
+  }
+  return r;
 }
 
-static inline unsigned long hwRoot(long int n)
+static inline unsigned int hwRoot(unsigned int n)
 {
   unsigned long input, result;
   int i = 0;
-  input = (n<<32);
+  input = ((unsigned long)n)<<32;
   asm volatile ("fence"); // fence instructions used for timing delimiters only
   for (i = 0; i < MAJOR; i++) {
     ROCC_INSTRUCTION_DS(0, result, input, 0);
@@ -38,7 +53,7 @@ int main(void)
   unsigned int n,r,i;
   for (i = 0; i < 100; i++) {
     n = vals[i];
-    r = hwRoot(n);
+    r = hwRoot(n); // or, use: r = swRoot(n);
     printf("Root(%u)=%d\n",n,r);
     if ((r*r > n) || ((r+1)*(r+1)) <= n) return n+1;
   }
