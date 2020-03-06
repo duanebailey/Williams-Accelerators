@@ -43,12 +43,13 @@ class RootBit extends Module {
                 val rootOut = Output(UInt(32.W))
               })
 
-  val v = Cat(io.remainderIn(29,0),io.nIn(63,62))
-  val remainderDraft = v-Cat(io.rootIn(29,0),1.U(2.W))
-  val neg = remainderDraft(31)
+  // these results temporarily 34 bits to allow signed interpretation
+  val v = Cat(io.remainderIn,io.nIn(63,62))
+  val remainderDraft = v-Cat(io.rootIn,1.U(2.W))
+  val neg = remainderDraft(33)
 
   io.nOut := Cat(io.nIn(61,0),0.U(2.W))
-  io.remainderOut := Mux(neg === 1.U,v,remainderDraft)
+  io.remainderOut := Mux(neg === 1.U,v(31,0),remainderDraft(31,0))
   io.rootOut := Cat(io.rootIn(30,0),~neg)
 }
 
@@ -163,9 +164,9 @@ class Root64Imp(outer: Root64)(implicit p: Parameters)
      }
      is(computeState) {
         val stages = Vec(Seq.fill(32){ Module(new RootBit()).io })
-        stages(0).nIn := n //Cat(n(63,32),0.U(32.W))
-        stages(0).remainderIn := 0.U //n(31,16) 
-        stages(0).rootIn := 0.U // n(15,0)
+        stages(0).nIn := n
+        stages(0).remainderIn := 0.U
+        stages(0).rootIn := 0.U
         for (i <- 0 until 31) {
            stages(i+1).nIn := stages(i).nOut
            stages(i+1).remainderIn := stages(i).remainderOut

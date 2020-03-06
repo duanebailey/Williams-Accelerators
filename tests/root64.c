@@ -29,7 +29,7 @@ unsigned long swRoot(unsigned long n)
   return r;
 }
 
-static inline unsigned long hwRoot(unsigned long int n)
+static inline unsigned long hwRoot(unsigned long n)
 {
   unsigned long result;
   asm volatile ("fence"); // fence instructions used for timing delimiters only
@@ -46,8 +46,8 @@ int main(void)
   for (i = 0; i < 100; i++) {
     n = vals[i];
     r = hwRoot(n);
-    printf("Root(%u)=%u\n",n,r);
-    if ((r*r > n) || ((r+1)*(r+1)) <= n) return n+1;
+    printf("Root(%lu)=%lu\n",n,r);
+    if ((r*r > n) || ((r+1)*(r+1)) <= n) return i+1;
   }
   return 0;
 }
